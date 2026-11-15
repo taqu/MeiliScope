@@ -1,0 +1,80 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish Windows x64 release
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: frontend/.nvmrc
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Wails CLI
+        run: go install github.com/wailsapp/wails/v3/cmd/wails3@v3.1.0
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build release executable
+        run: wails3 build
+
+      - name: Determine release version
+        id: version
+        shell: bash
+        run: echo "version=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+
+      - name: Create ZIP package
+        shell: pwsh
+        run: |
+          $version = "${{ steps.version.outputs.version }}"
+          $zipName = "MeiliScope_${version}_windows_amd64.zip"
+          Compress-Archive -Path bin/meiliscope.exe, LICENSE, README.md -DestinationPath $zipName
+          $hash = (Get-FileHash $zipName -Algorithm SHA256).Hash.ToLower()
+          "$hash  $zipName" | Out-File -FilePath "${zipName}.sha256" -Encoding utf8NoBOM -NoNewline
+          Write-Output "zip=$zipName" >> $Env:GITHUB_OUTPUT
+          Write-Output "sha256=${zipName}.sha256" >> $Env:GITHUB_OUTPUT
+        id: package
+
+      - name: Verify ZIP contents
+        shell: pwsh
+        run: |
+          $expected = @("meiliscope.exe", "LICENSE", "README.md")
+          $zip = [System.IO.Compression.ZipFile]::OpenRead("${{ steps.package.outputs.zip }}")
+          $entries = $zip.Entries | Select-Object -ExpandProperty Name
+          $zip.Dispose()
+          foreach ($f in $expected) {
+            if ($entries -notcontains $f) { Write-Error "Missing $f in ZIP"; exit 1 }
+          }
+          Write-Host "ZIP contents verified: $($entries -join ', ')"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: MeiliScope ${{ steps.version.outputs.version }}
+          draft: false
+          prerelease: ${{ contains(steps.version.outputs.version, '-') }}
+          files: |
+            ${{ steps.package.outputs.zip }}
+            ${{ steps.package.outputs.sha256 }}
+          generate_release_notes: true

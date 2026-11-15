@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<MsixPackagingToolTemplate
+    xmlns="http://schemas.microsoft.com/msix/packaging/msixpackagingtool/template/2022">
+    <Settings
+        AllowTelemetry="false"
+        ApplyACLsToPackageFiles="true"
+        GenerateCommandLineFile="true"
+        AllowPromptForPassword="false">
+    </Settings>
+    <Installer
+        Path="wails-v3.exe"
+        Arguments=""
+        InstallLocation="C:\Program Files\taqu\MeiliScope PoC">
+    </Installer>
+    <PackageInformation
+        PackageName="MeiliScope PoC"
+        PackageDisplayName="MeiliScope PoC"
+        PublisherName="CN=taqu"
+        PublisherDisplayName="taqu"
+        Version="0.0.1.0"
+        PackageDescription="Wails v3 feasibility PoC">
+        <Capabilities>
+            <Capability Name="runFullTrust" />
+            
+        </Capabilities>
+        <Applications>
+            <Application
+                Id="com.example.wailsv3"
+                Description="Wails v3 feasibility PoC"
+                DisplayName="MeiliScope PoC"
+                ExecutableName="wails-v3.exe"
+                EntryPoint="Windows.FullTrustApplication">
+                
+            </Application>
+        </Applications>
+        <Resources>
+            <Resource Language="en-us" />
+        </Resources>
+        <Dependencies>
+            <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.17763.0" MaxVersionTested="10.0.19041.0" />
+        </Dependencies>
+        <Properties>
+            <Framework>false</Framework>
+            <DisplayName>MeiliScope PoC</DisplayName>
+            <PublisherDisplayName>taqu</PublisherDisplayName>
+            <Description>Wails v3 feasibility PoC</Description>
+            <Logo>Assets\AppIcon.png</Logo>
+        </Properties>
+    </PackageInformation>
+    <SaveLocation PackagePath="wails-v3.msix" />
+    <PackageIntegrity>
+        <CertificatePath></CertificatePath>
+    </PackageIntegrity>
+</MsixPackagingToolTemplate>

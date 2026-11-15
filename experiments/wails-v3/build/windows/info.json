@@ -1,0 +1,17 @@
+{
+	"fixed": {
+		"file_version": "0.0.1",
+		"product_version": "0.0.1"
+	},
+	"info": {
+		"0409": {
+			"FileVersion": "0.0.1",
+			"ProductVersion": "0.0.1",
+			"CompanyName": "taqu",
+			"FileDescription": "Wails v3 feasibility PoC",
+			"LegalCopyright": "© 2026 taqu",
+			"ProductName": "MeiliScope PoC",
+			"Comments": "This is a comment"
+		}
+	}
+}
