@@ -128,6 +128,60 @@ func (c *Client) GetDocument(ctx context.Context, uid, docID string) (json.RawMe
 	return out, nil
 }
 
+// TaskResponse is the asynchronous task reference returned by document mutation endpoints.
+type TaskResponse struct {
+	TaskUID    int64  `json:"taskUid"`
+	IndexUID   string `json:"indexUid"`
+	Status     string `json:"status"`
+	Type       string `json:"type"`
+	EnqueuedAt string `json:"enqueuedAt"`
+}
+
+// AddDocuments calls POST /indexes/{uid}/documents with docs as the request body.
+// docs must be a JSON array or object. If the index already has a document with
+// the same primary-key value, it is completely replaced. Returns a task reference.
+func (c *Client) AddDocuments(ctx context.Context, uid string, docs json.RawMessage) (json.RawMessage, error) {
+	path := "/indexes/" + url.PathEscape(uid) + "/documents"
+	var raw json.RawMessage
+	if err := c.Post(ctx, path, docs, &raw); err != nil {
+		return nil, err
+	}
+	return raw, nil
+}
+
+// UpdateDocuments calls PUT /indexes/{uid}/documents with docs as the request body.
+// Only the fields present in docs are updated; all other fields of matching documents
+// are preserved. Returns a task reference.
+func (c *Client) UpdateDocuments(ctx context.Context, uid string, docs json.RawMessage) (json.RawMessage, error) {
+	path := "/indexes/" + url.PathEscape(uid) + "/documents"
+	var raw json.RawMessage
+	if err := c.Put(ctx, path, docs, &raw); err != nil {
+		return nil, err
+	}
+	return raw, nil
+}
+
+// DeleteDocument calls DELETE /indexes/{uid}/documents/{docID} and returns a task reference.
+// docID must be the exact primary-key value; it is URL-encoded before the request is sent.
+func (c *Client) DeleteDocument(ctx context.Context, uid string, docID string) (json.RawMessage, error) {
+	path := "/indexes/" + url.PathEscape(uid) + "/documents/" + url.PathEscape(docID)
+	var raw json.RawMessage
+	if err := c.Delete(ctx, path, &raw); err != nil {
+		return nil, err
+	}
+	return raw, nil
+}
+
+// GetTask calls GET /tasks/{taskUID} and returns the raw task JSON response.
+func (c *Client) GetTask(ctx context.Context, taskUID int64) (json.RawMessage, error) {
+	path := fmt.Sprintf("/tasks/%d", taskUID)
+	var raw json.RawMessage
+	if err := c.Get(ctx, path, &raw); err != nil {
+		return nil, err
+	}
+	return raw, nil
+}
+
 // Search calls POST /indexes/{uid}/search with requestJSON as the body and returns
 // the complete raw response bytes, preserving all fields and numeric precision.
 // requestJSON must be a valid JSON object.

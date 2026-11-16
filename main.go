@@ -47,6 +47,8 @@ func main() {
 	idxSvc := services.NewIndexService(connSvc)
 	docSvc := services.NewDocumentService(connSvc)
 	querySvc := services.NewQueryService(connSvc, cfgManager)
+	docWriteSvc := services.NewDocumentWriteService(connSvc)
+	taskSvc := services.NewTaskService(connSvc)
 
 	app := application.New(application.Options{
 		Name:        "MeiliScope",
@@ -57,6 +59,8 @@ func main() {
 			application.NewService(idxSvc),
 			application.NewService(docSvc),
 			application.NewService(querySvc),
+			application.NewService(docWriteSvc),
+			application.NewService(taskSvc),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),

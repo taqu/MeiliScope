@@ -8,6 +8,7 @@ import {
 import { useConnectionContext } from "../../context/ConnectionContext";
 import { InspectorPanel } from "../../components/json-tree";
 import { HitTable, ColumnManager } from "../../components/doc-table";
+import { DocumentEditor, type EditorMode } from "./DocumentEditor";
 
 // ─── Index List Panel ──────────────────────────────────────────────────────────
 
@@ -85,11 +86,26 @@ const PAGE_SIZES = [25, 50, 100, 200];
 
 interface BrowserPanelProps {
   indexUID: string;
+  primaryKey: string | null;
   selectedRawJson: string | null;
+  selectedRecord: DocumentRecord | null;
   onSelectRecord: (rec: DocumentRecord) => void;
+  onNew: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+  onRegisterRefresh: (fn: () => void) => void;
 }
 
-function BrowserPanel({ indexUID, selectedRawJson, onSelectRecord }: BrowserPanelProps) {
+function BrowserPanelWithActions({
+  indexUID,
+  selectedRawJson,
+  selectedRecord,
+  onSelectRecord,
+  onNew,
+  onEdit,
+  onDelete,
+  onRegisterRefresh,
+}: BrowserPanelProps) {
   const [page, setPage] = useState<DocumentPage | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -147,6 +163,10 @@ function BrowserPanel({ indexUID, selectedRawJson, onSelectRecord }: BrowserPane
 
   const refresh = () => void load(offset, limit);
 
+  useEffect(() => {
+    onRegisterRefresh(refresh);
+  }, [onRegisterRefresh, refresh]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const total = Number(page?.total ?? 0);
   const hasPrev = offset > 0;
   const hasMore = offset + limit < total;
@@ -156,6 +176,15 @@ function BrowserPanel({ indexUID, selectedRawJson, onSelectRecord }: BrowserPane
       <div className="browser-header">
         <span className="browser-index-name">{indexUID}</span>
         <div className="browser-header-actions">
+          <button className="btn btn--primary btn--sm" onClick={onNew}>
+            + New
+          </button>
+          <button className="btn btn--ghost btn--sm" onClick={onEdit} disabled={!selectedRecord}>
+            Edit
+          </button>
+          <button className="btn btn--danger btn--sm" onClick={onDelete} disabled={!selectedRecord}>
+            Delete
+          </button>
           {discoveredCols.length > 0 && (
             <button className="btn btn--ghost btn--sm" onClick={() => setShowColManager((v) => !v)}>
               Columns
@@ -216,12 +245,61 @@ function BrowserPanel({ indexUID, selectedRawJson, onSelectRecord }: BrowserPane
 
 interface SelectedIndex { uid: string; primaryKey: string | null; }
 
+interface EditorState {
+  mode: EditorMode;
+  initialDocJson?: string;
+  documentID?: string;
+}
+
+function getDocumentID(rec: DocumentRecord, primaryKeyField: string | null): string | null {
+  if (!primaryKeyField) return null;
+  const val = (rec.fields as Record<string, unknown>)?.[primaryKeyField];
+  return val !== undefined ? String(val) : null;
+}
+
 function ConnectedDocumentBrowser({ connectionID: _cid }: { connectionID: string }) {
   const [selected, setSelected] = useState<SelectedIndex | null>(null);
   const [selectedRecord, setSelectedRecord] = useState<DocumentRecord | null>(null);
+  const [editorState, setEditorState] = useState<EditorState | null>(null);
+  const browserRefreshRef = useRef<(() => void) | null>(null);
 
   const handleIndexSelect = (uid: string, primaryKey: string | null) => {
     setSelected({ uid, primaryKey });
+    setSelectedRecord(null);
+  };
+
+  const handleNewDocument = () => {
+    setEditorState({ mode: "create" });
+  };
+
+  const handleEditDocument = () => {
+    if (!selectedRecord) return;
+    const docID = selected?.primaryKey ? getDocumentID(selectedRecord, selected.primaryKey) : undefined;
+    setEditorState({
+      mode: "edit",
+      initialDocJson: selectedRecord.rawJson,
+      documentID: docID ?? undefined,
+    });
+  };
+
+  const handleDeleteDocument = () => {
+    if (!selectedRecord) return;
+    const docID = selected?.primaryKey ? getDocumentID(selectedRecord, selected.primaryKey) : undefined;
+    setEditorState({
+      mode: "delete",
+      initialDocJson: selectedRecord.rawJson,
+      documentID: docID ?? undefined,
+    });
+  };
+
+  const handleEditorClose = () => setEditorState(null);
+
+  const handleEditorSuccess = (_taskUid: number) => {
+    // Editor transitions to task panel; keep editor open
+  };
+
+  const handleRefreshNeeded = () => {
+    browserRefreshRef.current?.();
     setSelectedRecord(null);
   };
 
@@ -231,11 +309,17 @@ function ConnectedDocumentBrowser({ connectionID: _cid }: { connectionID: string
 
       {selected ? (
         <div className="browser-with-inspector">
-          <BrowserPanel
+          <BrowserPanelWithActions
             key={selected.uid}
             indexUID={selected.uid}
+            primaryKey={selected.primaryKey}
             selectedRawJson={selectedRecord?.rawJson ?? null}
             onSelectRecord={setSelectedRecord}
+            onNew={handleNewDocument}
+            onEdit={handleEditDocument}
+            onDelete={handleDeleteDocument}
+            selectedRecord={selectedRecord}
+            onRegisterRefresh={(fn) => { browserRefreshRef.current = fn; }}
           />
           <InspectorPanel rawJson={selectedRecord?.rawJson ?? null} />
         </div>
@@ -243,6 +327,19 @@ function ConnectedDocumentBrowser({ connectionID: _cid }: { connectionID: string
         <div className="browser-no-index">
           <p className="browser-no-index-msg">Select an index to browse documents.</p>
         </div>
+      )}
+
+      {editorState && selected && (
+        <DocumentEditor
+          mode={editorState.mode}
+          indexUID={selected.uid}
+          primaryKeyField={selected.primaryKey}
+          initialDocJson={editorState.initialDocJson}
+          documentID={editorState.documentID}
+          onClose={handleEditorClose}
+          onSuccess={handleEditorSuccess}
+          onRefreshNeeded={handleRefreshNeeded}
+        />
       )}
     </div>
   );

@@ -146,6 +146,40 @@ func (c *Client) Post(ctx context.Context, path string, body any, out any) error
 	return c.do(req, out)
 }
 
+// Put performs an HTTP PUT request to path with body serialized as JSON,
+// then JSON-decodes the response into out. out may be nil to discard the body.
+func (c *Client) Put(ctx context.Context, path string, body any, out any) error {
+	var bodyReader io.Reader
+	if body != nil {
+		b, err := json.Marshal(body)
+		if err != nil {
+			return &APIError{Kind: ErrKindBadRequest, Msg: "failed to serialize request body"}
+		}
+		bodyReader = bytes.NewReader(b)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, c.buildURL(path), bodyReader)
+	if err != nil {
+		return &APIError{Kind: ErrKindBadRequest, Msg: "failed to build request"}
+	}
+	c.setHeaders(req)
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	return c.do(req, out)
+}
+
+// Delete performs an HTTP DELETE request to path and JSON-decodes the response into out.
+// out may be nil to discard the body.
+func (c *Client) Delete(ctx context.Context, path string, out any) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, c.buildURL(path), nil)
+	if err != nil {
+		return &APIError{Kind: ErrKindBadRequest, Msg: "failed to build request"}
+	}
+	c.setHeaders(req)
+	return c.do(req, out)
+}
+
 // setHeaders adds authentication and Accept headers to req.
 // The API key is never logged or included in errors.
 func (c *Client) setHeaders(req *http.Request) {

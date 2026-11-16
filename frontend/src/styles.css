@@ -1709,3 +1709,299 @@ button:focus:not(:focus-visible) {
   display: flex;
   gap: 4px;
 }
+
+/* ─── Document Editor Modal ──────────────────────────────────────────────────── */
+
+.editor-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  z-index: 1000;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 48px 24px 24px;
+  overflow-y: auto;
+}
+
+.editor-modal {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  width: 100%;
+  max-width: 760px;
+  display: flex;
+  flex-direction: column;
+  max-height: 90vh;
+  overflow: hidden;
+}
+
+.editor-modal-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-bg);
+  flex-shrink: 0;
+}
+
+.editor-modal-header__title {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--color-text);
+}
+
+.editor-modal-header__index {
+  font-size: 12px;
+  color: var(--color-muted);
+  font-family: ui-monospace, Consolas, monospace;
+}
+
+.editor-modal-header__close {
+  margin-left: auto;
+}
+
+.editor-modal-body {
+  padding: 16px;
+  overflow-y: auto;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.editor-cm-wrapper {
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.editor-pk-hint {
+  font-size: 12px;
+  color: var(--color-muted);
+  margin: 0;
+}
+
+.editor-warning {
+  background: rgba(251, 191, 36, 0.12);
+  border: 1px solid rgba(251, 191, 36, 0.4);
+  border-radius: 4px;
+  padding: 8px 12px;
+  font-size: 13px;
+  color: #fbbf24;
+}
+
+.editor-delete-id {
+  font-size: 13px;
+  color: var(--color-text);
+  padding: 6px 0;
+}
+
+.editor-step-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  padding-top: 4px;
+  flex-shrink: 0;
+}
+
+/* ─── Confirm step ────────────────────────────────────────────────────────────── */
+
+.editor-confirm__meta {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 12px;
+  font-size: 13px;
+  margin: 0 0 12px;
+}
+
+.editor-confirm__meta dt {
+  font-weight: 600;
+  color: var(--color-muted);
+}
+
+.editor-confirm__meta dd {
+  color: var(--color-text);
+  margin: 0;
+}
+
+.editor-confirm__section-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 4px;
+}
+
+.editor-confirm__preview {
+  font-size: 12px;
+  font-family: ui-monospace, Consolas, monospace;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  padding: 8px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  color: var(--color-text);
+  margin: 0;
+}
+
+/* ─── Diff table ──────────────────────────────────────────────────────────────── */
+
+.editor-diff-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  font-family: ui-monospace, Consolas, monospace;
+}
+
+.editor-diff-table th {
+  text-align: left;
+  padding: 4px 8px;
+  color: var(--color-muted);
+  border-bottom: 1px solid var(--color-border);
+  font-weight: 600;
+}
+
+.editor-diff-table td {
+  padding: 3px 8px;
+  vertical-align: top;
+}
+
+.diff-row--added    { background: rgba(52, 211, 153, 0.08); }
+.diff-row--removed  { background: rgba(248, 113, 113, 0.08); }
+.diff-row--changed  { background: rgba(251, 191, 36, 0.06); }
+
+.diff-path   { color: var(--color-muted); }
+.diff-added  { color: #34d399; }
+.diff-removed { color: #f87171; }
+.diff-arrow  { color: var(--color-muted); }
+
+/* ─── Task panel ─────────────────────────────────────────────────────────────── */
+
+.editor-task-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.editor-task-panel__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.editor-task-panel__label {
+  font-weight: 600;
+  color: var(--color-muted);
+}
+
+.editor-task-panel__uid {
+  font-family: ui-monospace, Consolas, monospace;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.editor-task-panel__polling-indicator {
+  font-size: 12px;
+  color: var(--color-muted);
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.4; }
+}
+
+.editor-task-panel__meta {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 3px 12px;
+  font-size: 12px;
+  margin: 0;
+}
+
+.editor-task-panel__meta dt {
+  font-weight: 600;
+  color: var(--color-muted);
+}
+
+.editor-task-panel__meta dd {
+  color: var(--color-text);
+  margin: 0;
+  font-family: ui-monospace, Consolas, monospace;
+}
+
+.editor-task-panel__message {
+  padding: 8px 12px;
+  border-radius: 4px;
+  font-size: 13px;
+}
+
+.editor-task-panel__message--success {
+  background: rgba(52, 211, 153, 0.1);
+  border: 1px solid rgba(52, 211, 153, 0.35);
+  color: #34d399;
+}
+
+.editor-task-panel__message--error {
+  background: rgba(248, 113, 113, 0.1);
+  border: 1px solid rgba(248, 113, 113, 0.35);
+  color: #f87171;
+}
+
+.editor-task-panel__message--warning {
+  background: rgba(251, 191, 36, 0.08);
+  border: 1px solid rgba(251, 191, 36, 0.35);
+  color: #fbbf24;
+}
+
+.editor-task-panel__error-dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 10px;
+  font-size: 12px;
+  margin: 6px 0 0;
+}
+
+.editor-task-panel__error-dl dt { font-weight: 600; }
+.editor-task-panel__error-dl dd { margin: 0; word-break: break-all; }
+
+.editor-task-panel__actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+/* ─── Status badge ───────────────────────────────────────────────────────────── */
+
+.status-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: lowercase;
+}
+
+.status-badge--enqueued   { background: rgba(251, 191, 36, 0.15); color: #fbbf24; }
+.status-badge--processing { background: rgba(96, 165, 250, 0.15); color: #60a5fa; }
+.status-badge--succeeded  { background: rgba(52, 211, 153, 0.15); color: #34d399; }
+.status-badge--failed     { background: rgba(248, 113, 113, 0.15); color: #f87171; }
+.status-badge--canceled   { background: rgba(156, 163, 175, 0.15); color: #9ca3af; }
+
+/* ─── Browser action buttons ─────────────────────────────────────────────────── */
+
+.btn--danger {
+  background: rgba(248, 113, 113, 0.15);
+  color: #f87171;
+  border: 1px solid rgba(248, 113, 113, 0.4);
+}
+
+.btn--danger:hover:not(:disabled) {
+  background: rgba(248, 113, 113, 0.25);
+}
