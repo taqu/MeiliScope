@@ -10,6 +10,7 @@ import (
 
 	appcore "github.com/taqu/meiliscope/internal/app"
 	"github.com/taqu/meiliscope/internal/config"
+	"github.com/taqu/meiliscope/internal/platform"
 	"github.com/taqu/meiliscope/internal/services"
 )
 
@@ -36,13 +37,22 @@ func main() {
 
 	cfg := cfgManager.Get()
 
+	creds, credErr := platform.NewCredentialStore()
+	if credErr != nil {
+		slog.Warn("credential store degraded; session-only mode active", "err", credErr)
+	}
+
 	appSvc := services.NewAppService()
+	connSvc := services.NewConnectionService(cfgManager, creds)
+	idxSvc := services.NewIndexService(connSvc)
 
 	app := application.New(application.Options{
 		Name:        "MeiliScope",
 		Description: "Desktop browser for Meilisearch",
 		Services: []application.Service{
 			application.NewService(appSvc),
+			application.NewService(connSvc),
+			application.NewService(idxSvc),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),

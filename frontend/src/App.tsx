@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { NAV_ITEMS, type ViewId } from "./types/navigation";
 import { AppService, type ApplicationInfo, type RuntimeInfo } from "./services/app";
+import { ConnectionProvider, useConnectionContext } from "./context/ConnectionContext";
 import { ConnectionsView } from "./features/connections/ConnectionsView";
 import { IndexesView } from "./features/indexes/IndexesView";
 import { DocumentsView } from "./features/documents/DocumentsView";
@@ -60,7 +61,25 @@ function NavSidebar({
   );
 }
 
-function Toolbar({ appInfo }: { appInfo: LoadState<ApplicationInfo> }) {
+// Connection state dot indicator
+function ConnStateDot({ state }: { state: string }) {
+  return (
+    <span
+      className={`conn-dot conn-dot--${state}`}
+      aria-label={`Connection: ${state}`}
+    />
+  );
+}
+
+function Toolbar({
+  appInfo,
+  onOpenConnections,
+}: {
+  appInfo: LoadState<ApplicationInfo>;
+  onOpenConnections: () => void;
+}) {
+  const { activeConn } = useConnectionContext();
+
   return (
     <header className="toolbar" role="banner">
       <span className="toolbar__brand">MeiliScope</span>
@@ -78,22 +97,58 @@ function Toolbar({ appInfo }: { appInfo: LoadState<ApplicationInfo> }) {
           error
         </span>
       )}
+
+      <div className="toolbar__spacer" />
+
+      <button
+        className="toolbar__conn-btn"
+        onClick={onOpenConnections}
+        aria-label="Manage connections"
+      >
+        {activeConn ? (
+          <>
+            <ConnStateDot state={activeConn.state} />
+            <span className="toolbar__conn-name">{activeConn.name}</span>
+          </>
+        ) : (
+          <span className="toolbar__conn-name toolbar__conn-name--none">
+            No connection
+          </span>
+        )}
+      </button>
     </header>
   );
 }
 
 function StatusBar({ runtimeInfo }: { runtimeInfo: LoadState<RuntimeInfo> }) {
+  const { activeConn } = useConnectionContext();
+
+  const stateLabel: Record<string, string> = {
+    connected: "Connected",
+    connecting: "Connecting…",
+    limited_access: "Limited Access",
+    auth_required: "Auth Required",
+    error: "Connection Error",
+    disconnected: "Disconnected",
+  };
+
   return (
     <footer className="status-bar" role="contentinfo">
+      {activeConn && (
+        <>
+          <span className={`status-bar__item status-bar__item--conn-${activeConn.state}`}>
+            {stateLabel[activeConn.state] ?? activeConn.state}
+          </span>
+          <span className="status-bar__sep" aria-hidden="true">·</span>
+        </>
+      )}
       {runtimeInfo.status === "loading" && (
-        <span className="status-bar__item">Loading runtime info…</span>
+        <span className="status-bar__item">Loading…</span>
       )}
       {runtimeInfo.status === "ok" && (
         <>
           <span className="status-bar__item">{runtimeInfo.data.goVersion}</span>
-          <span className="status-bar__sep" aria-hidden="true">
-            ·
-          </span>
+          <span className="status-bar__sep" aria-hidden="true">·</span>
           <span className="status-bar__item">
             {runtimeInfo.data.os}/{runtimeInfo.data.arch}
           </span>
@@ -125,20 +180,20 @@ function ContentArea({ view }: { view: ViewId }) {
   }
 }
 
-export default function App() {
+function AppInner() {
   const [activeView, setActiveView] = useState<ViewId>("connections");
   const appInfo = useBackendData<ApplicationInfo>(AppService.getApplicationInfo);
-  const runtimeInfo = useBackendData<RuntimeInfo>(
-    AppService.getRuntimeInformation
-  );
+  const runtimeInfo = useBackendData<RuntimeInfo>(AppService.getRuntimeInformation);
 
   const handleNavSelect = useCallback((id: ViewId) => {
     setActiveView(id);
   }, []);
 
+  const openConnections = useCallback(() => setActiveView("connections"), []);
+
   return (
     <div className="app-shell">
-      <Toolbar appInfo={appInfo} />
+      <Toolbar appInfo={appInfo} onOpenConnections={openConnections} />
       <div className="app-body">
         <NavSidebar active={activeView} onSelect={handleNavSelect} />
         <main className="content-area" role="main">
@@ -147,5 +202,13 @@ export default function App() {
       </div>
       <StatusBar runtimeInfo={runtimeInfo} />
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <ConnectionProvider>
+      <AppInner />
+    </ConnectionProvider>
   );
 }

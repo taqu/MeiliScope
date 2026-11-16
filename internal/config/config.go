@@ -16,12 +16,27 @@ const (
 	schemaV1   = 1
 )
 
+// ConnectionProfile is a saved Meilisearch connection.
+// It never contains the API key; credentials are managed by the credential store.
+type ConnectionProfile struct {
+	// ID is a stable, unique identifier used as the credential key.
+	ID string `json:"id"`
+	// Name is the user-visible display name.
+	Name string `json:"name"`
+	// URL is the base URL of the Meilisearch server.
+	URL string `json:"url"`
+	// CredentialMode is "keyring" for persistent storage or "session" for in-memory only.
+	CredentialMode string `json:"credentialMode"`
+}
+
 // Config holds all non-secret application settings.
 type Config struct {
-	Version      int    `json:"version"`
-	WindowWidth  int    `json:"windowWidth"`
-	WindowHeight int    `json:"windowHeight"`
-	ActiveView   string `json:"activeView"`
+	Version            int                 `json:"version"`
+	WindowWidth        int                 `json:"windowWidth"`
+	WindowHeight       int                 `json:"windowHeight"`
+	ActiveView         string              `json:"activeView"`
+	Connections        []ConnectionProfile `json:"connections,omitempty"`
+	ActiveConnectionID string              `json:"activeConnectionID,omitempty"`
 }
 
 func defaultConfig() Config {
@@ -47,6 +62,18 @@ func NewManager() (*Manager, error) {
 		return nil, fmt.Errorf("config: resolve AppData: %w", err)
 	}
 	dir := filepath.Join(appData, appDirName)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return nil, fmt.Errorf("config: create dir %s: %w", dir, err)
+	}
+	return &Manager{
+		dir:  dir,
+		path: filepath.Join(dir, configFile),
+	}, nil
+}
+
+// NewManagerAt creates a Manager rooted at the given directory.
+// Intended for testing; prefer NewManager in production code.
+func NewManagerAt(dir string) (*Manager, error) {
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return nil, fmt.Errorf("config: create dir %s: %w", dir, err)
 	}

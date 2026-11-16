@@ -1,25 +1,59 @@
+//go:build windows
+
 package platform
 
-// WindowsCredentialStore implements CredentialStore using Windows Credential Manager.
-// It is a placeholder pending Phase 1 implementation.
-// The interface and planned approach are documented in docs/architecture/overview.md §2.5.
-type WindowsCredentialStore struct{}
+import (
+	"context"
+	"errors"
+	"fmt"
 
-// NewCredentialStore returns the Windows Credential Manager implementation.
-// In Phase 1 this will be replaced with a real implementation using
-// github.com/danieljoos/wincred.
-func NewCredentialStore() CredentialStore {
-	return &WindowsCredentialStore{}
+	keyring "github.com/zalando/go-keyring"
+)
+
+const keyringSvc = "MeiliScope"
+
+// windowsStore implements CredentialStore using Windows Credential Manager
+// through the go-keyring library.
+type windowsStore struct{}
+
+func newPlatformStore() (CredentialStore, error) {
+	// Probe the credential store with a no-op to verify it is accessible.
+	// go-keyring on Windows uses DPAPI-protected WinCred entries; this rarely fails
+	// but can when running in a restricted service account context.
+	_, err := keyring.Get(keyringSvc, "__probe__")
+	if err != nil && !errors.Is(err, keyring.ErrNotFound) {
+		return nil, fmt.Errorf("Windows Credential Manager unavailable: %w", err)
+	}
+	return &windowsStore{}, nil
 }
 
-func (w *WindowsCredentialStore) Set(_, _ string) error {
-	return errNotImplemented
+func (s *windowsStore) Save(_ context.Context, id, secret string) error {
+	if err := keyring.Set(keyringSvc, id, secret); err != nil {
+		return fmt.Errorf("credential store: save failed: %w", err)
+	}
+	return nil
 }
 
-func (w *WindowsCredentialStore) Get(_ string) (string, error) {
-	return "", errNotImplemented
+func (s *windowsStore) Load(_ context.Context, id string) (string, error) {
+	v, err := keyring.Get(keyringSvc, id)
+	if errors.Is(err, keyring.ErrNotFound) {
+		return "", ErrNotFound
+	}
+	if err != nil {
+		return "", fmt.Errorf("credential store: load failed: %w", err)
+	}
+	return v, nil
 }
 
-func (w *WindowsCredentialStore) Delete(_ string) error {
-	return errNotImplemented
+func (s *windowsStore) Delete(_ context.Context, id string) error {
+	err := keyring.Delete(keyringSvc, id)
+	if errors.Is(err, keyring.ErrNotFound) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("credential store: delete failed: %w", err)
+	}
+	return nil
 }
+
+func (s *windowsStore) IsSessionOnly() bool { return false }
