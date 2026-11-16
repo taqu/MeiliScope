@@ -127,3 +127,15 @@ func (c *Client) GetDocument(ctx context.Context, uid, docID string) (json.RawMe
 	}
 	return out, nil
 }
+
+// Search calls POST /indexes/{uid}/search with requestJSON as the body and returns
+// the complete raw response bytes, preserving all fields and numeric precision.
+// requestJSON must be a valid JSON object.
+func (c *Client) Search(ctx context.Context, uid string, requestJSON json.RawMessage) (json.RawMessage, error) {
+	path := "/indexes/" + url.PathEscape(uid) + "/search"
+	var raw json.RawMessage
+	if err := c.Post(ctx, path, requestJSON, &raw); err != nil {
+		return nil, err
+	}
+	return raw, nil
+}
