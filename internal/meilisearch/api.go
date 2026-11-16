@@ -2,8 +2,11 @@ package meilisearch
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/url"
+	"strconv"
+	"strings"
 )
 
 // HealthResponse is the response from GET /health.
@@ -87,4 +90,40 @@ func (c *Client) GetIndexStats(ctx context.Context, uid string) (*IndexStats, er
 		return nil, err
 	}
 	return &out, nil
+}
+
+// DocumentsResult is the paginated response from GET /indexes/{uid}/documents.
+// Each element of Results is a raw JSON object, preserving all types and numeric precision.
+type DocumentsResult struct {
+	Results []json.RawMessage `json:"results"`
+	Offset  int               `json:"offset"`
+	Limit   int               `json:"limit"`
+	Total   int64             `json:"total"`
+}
+
+// GetDocuments calls GET /indexes/{uid}/documents with offset/limit pagination.
+// If fields is non-empty, only the specified field names are returned by the server.
+func (c *Client) GetDocuments(ctx context.Context, uid string, offset, limit int, fields []string) (*DocumentsResult, error) {
+	params := url.Values{}
+	params.Set("offset", strconv.Itoa(offset))
+	params.Set("limit", strconv.Itoa(limit))
+	if len(fields) > 0 {
+		params.Set("fields", strings.Join(fields, ","))
+	}
+	path := "/indexes/" + url.PathEscape(uid) + "/documents?" + params.Encode()
+	var out DocumentsResult
+	if err := c.Get(ctx, path, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// GetDocument calls GET /indexes/{uid}/documents/{id} and returns the raw document JSON.
+func (c *Client) GetDocument(ctx context.Context, uid, docID string) (json.RawMessage, error) {
+	path := "/indexes/" + url.PathEscape(uid) + "/documents/" + url.PathEscape(docID)
+	var out json.RawMessage
+	if err := c.Get(ctx, path, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
 }

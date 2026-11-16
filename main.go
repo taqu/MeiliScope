@@ -45,6 +45,7 @@ func main() {
 	appSvc := services.NewAppService()
 	connSvc := services.NewConnectionService(cfgManager, creds)
 	idxSvc := services.NewIndexService(connSvc)
+	docSvc := services.NewDocumentService(connSvc)
 
 	app := application.New(application.Options{
 		Name:        "MeiliScope",
@@ -53,6 +54,7 @@ func main() {
 			application.NewService(appSvc),
 			application.NewService(connSvc),
 			application.NewService(idxSvc),
+			application.NewService(docSvc),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),
