@@ -493,3 +493,88 @@ func TestGetIndexStats_LargeDocumentCount(t *testing.T) {
 		t.Errorf("NumberOfDocuments = %d; want 9999999999", stats.NumberOfDocuments)
 	}
 }
+
+// --- Redirect security (CVE-class: cross-host credential forwarding) ---
+
+// TestRedirect_SameHost verifies that Authorization is preserved on same-host redirects.
+func TestRedirect_SameHost(t *testing.T) {
+	const testKey = "secret-api-key"
+	var finalAuth string
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/redirect" {
+			http.Redirect(w, r, "/health", http.StatusMovedPermanently)
+			return
+		}
+		finalAuth = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"available"}`))
+	}))
+	defer srv.Close()
+
+	c, err := meilisearch.New(meilisearch.Config{BaseURL: srv.URL, APIKey: testKey})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	// Issue a request that hits /redirect first; the client must follow to /health.
+	if err := c.Get(context.Background(), "/redirect", new(meilisearch.HealthResponse)); err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	want := "Bearer " + testKey
+	if finalAuth != want {
+		t.Errorf("Authorization after same-host redirect = %q; want %q", finalAuth, want)
+	}
+}
+
+// TestRedirect_CrossHost verifies that Authorization is stripped on cross-host redirects
+// to prevent credential leakage.
+func TestRedirect_CrossHost(t *testing.T) {
+	const testKey = "super-secret-key"
+	var attackerAuth string
+
+	// Attacker server: records whatever Authorization header it receives.
+	attacker := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attackerAuth = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"available"}`))
+	}))
+	defer attacker.Close()
+
+	// Origin server: immediately redirects to the attacker server.
+	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, attacker.URL+"/health", http.StatusMovedPermanently)
+	}))
+	defer origin.Close()
+
+	c, err := meilisearch.New(meilisearch.Config{BaseURL: origin.URL, APIKey: testKey})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	// The request will follow the redirect to the attacker.
+	_ = c.Get(context.Background(), "/health", new(meilisearch.HealthResponse))
+
+	// The attacker must NOT have received the Authorization header.
+	if attackerAuth != "" {
+		t.Errorf("credential leaked to cross-host redirect target: Authorization = %q", attackerAuth)
+	}
+}
+
+// TestRedirect_TooMany verifies that the client stops after 10 redirects.
+func TestRedirect_TooMany(t *testing.T) {
+	count := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		count++
+		http.Redirect(w, r, "/health", http.StatusMovedPermanently)
+	}))
+	defer srv.Close()
+
+	c := newTestClient(t, srv, "")
+	_, err := c.Health(context.Background())
+	if err == nil {
+		t.Fatal("expected error after too many redirects; got nil")
+	}
+	// Error should indicate redirect loop, not a nil or unrelated error.
+	if meilisearch.IsCanceled(err) {
+		t.Errorf("unexpected canceled error: %v", err)
+	}
+}

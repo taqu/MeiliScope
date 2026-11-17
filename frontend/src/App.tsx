@@ -6,6 +6,7 @@ import { ConnectionsView } from "./features/connections/ConnectionsView";
 import { IndexesView } from "./features/indexes/IndexesView";
 import { DocumentsView } from "./features/documents/DocumentsView";
 import { QueryView } from "./features/query/QueryView";
+import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 
 type LoadState<T> =
   | { status: "idle" }
@@ -190,6 +191,14 @@ function AppInner() {
   }, []);
 
   const openConnections = useCallback(() => setActiveView("connections"), []);
+
+  useKeyboardShortcuts([
+    { key: "1", ctrl: true, description: "Open Index Explorer", handler: () => setActiveView("indexes") },
+    { key: "2", ctrl: true, description: "Open Document Browser", handler: () => setActiveView("documents") },
+    { key: "3", ctrl: true, description: "Open Query Console", handler: () => setActiveView("query") },
+    { key: "C", ctrl: true, shift: true, description: "Open Connections", handler: () => setActiveView("connections") },
+    { key: "c", ctrl: true, shift: true, description: "Open Connections", handler: () => setActiveView("connections") },
+  ]);
 
   return (
     <div className="app-shell">

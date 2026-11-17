@@ -9,6 +9,7 @@ import { useConnectionContext } from "../../context/ConnectionContext";
 import { InspectorPanel } from "../../components/json-tree";
 import { HitTable, ColumnManager } from "../../components/doc-table";
 import { DocumentEditor, type EditorMode } from "./DocumentEditor";
+import { ExportDialog, type ExportSource } from "../export/ExportDialog";
 
 // ─── Index List Panel ──────────────────────────────────────────────────────────
 
@@ -94,6 +95,7 @@ interface BrowserPanelProps {
   onEdit: () => void;
   onDelete: () => void;
   onRegisterRefresh: (fn: () => void) => void;
+  onExport: (documentsJSON: string, rowCount: number) => void;
 }
 
 function BrowserPanelWithActions({
@@ -105,6 +107,7 @@ function BrowserPanelWithActions({
   onEdit,
   onDelete,
   onRegisterRefresh,
+  onExport,
 }: BrowserPanelProps) {
   const [page, setPage] = useState<DocumentPage | null>(null);
   const [loading, setLoading] = useState(false);
@@ -193,6 +196,20 @@ function BrowserPanelWithActions({
           <button className="btn btn--ghost btn--sm" onClick={refresh} disabled={loading}>
             {loading ? "…" : "↺ Refresh"}
           </button>
+          {page && (page.items?.length ?? 0) > 0 && (
+            <button
+              className="btn btn--ghost btn--sm"
+              onClick={() => {
+                const docs = (page.items ?? []).map((r) => {
+                  try { return JSON.parse(r.rawJson) as unknown; } catch { return {}; }
+                });
+                onExport(JSON.stringify(docs), docs.length);
+              }}
+              title="Export current page"
+            >
+              ↓ Export
+            </button>
+          )}
         </div>
       </div>
 
@@ -257,10 +274,11 @@ function getDocumentID(rec: DocumentRecord, primaryKeyField: string | null): str
   return val !== undefined ? String(val) : null;
 }
 
-function ConnectedDocumentBrowser({ connectionID: _cid }: { connectionID: string }) {
+function ConnectedDocumentBrowser({ connectionID }: { connectionID: string }) {
   const [selected, setSelected] = useState<SelectedIndex | null>(null);
   const [selectedRecord, setSelectedRecord] = useState<DocumentRecord | null>(null);
   const [editorState, setEditorState] = useState<EditorState | null>(null);
+  const [exportSource, setExportSource] = useState<ExportSource | null>(null);
   const browserRefreshRef = useRef<(() => void) | null>(null);
 
   const handleIndexSelect = (uid: string, primaryKey: string | null) => {
@@ -320,6 +338,12 @@ function ConnectedDocumentBrowser({ connectionID: _cid }: { connectionID: string
             onDelete={handleDeleteDocument}
             selectedRecord={selectedRecord}
             onRegisterRefresh={(fn) => { browserRefreshRef.current = fn; }}
+            onExport={(documentsJSON, rowCount) => setExportSource({
+              kind: "documents",
+              indexUID: selected.uid,
+              documentsJSON,
+              rowCount,
+            })}
           />
           <InspectorPanel rawJson={selectedRecord?.rawJson ?? null} />
         </div>
@@ -339,6 +363,14 @@ function ConnectedDocumentBrowser({ connectionID: _cid }: { connectionID: string
           onClose={handleEditorClose}
           onSuccess={handleEditorSuccess}
           onRefreshNeeded={handleRefreshNeeded}
+        />
+      )}
+
+      {exportSource && (
+        <ExportDialog
+          source={exportSource}
+          connectionName={connectionID}
+          onClose={() => setExportSource(null)}
         />
       )}
     </div>

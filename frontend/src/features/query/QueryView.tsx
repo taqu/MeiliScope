@@ -14,6 +14,11 @@ import {
 import { useConnectionContext } from "../../context/ConnectionContext";
 import { InspectorPanel } from "../../components/json-tree";
 import { HitTable, ColumnManager } from "../../components/doc-table";
+import { SearchBuilder } from "./SearchBuilder";
+import { SavedQueriesPanel } from "./SavedQueriesPanel";
+import { ExportDialog, type ExportSource } from "../export/ExportDialog";
+import type { SavedQuery } from "../../services/savedquery";
+import { useKeyboardShortcuts } from "../../hooks/useKeyboardShortcuts";
 
 const DEFAULT_QUERY = `{
   "q": "",
@@ -315,6 +320,47 @@ function ConnectedQueryConsole({ connectionID }: { connectionID: string }) {
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [historyOpen, setHistoryOpen] = useState(false);
 
+  const [editorMode, setEditorMode] = useState<"json" | "builder">("json");
+  const [showSavedQueries, setShowSavedQueries] = useState(false);
+  const [exportSource, setExportSource] = useState<ExportSource | null>(null);
+
+  useKeyboardShortcuts([
+    {
+      key: "s", ctrl: true,
+      description: "Open Saved Queries",
+      skipInEditor: false,
+      handler: () => setShowSavedQueries((v) => !v),
+    },
+    {
+      key: "F", shift: true, alt: true,
+      description: "Format JSON",
+      skipInEditor: false,
+      handler: () => {
+        try {
+          const formatted = JSON.stringify(JSON.parse(queryText), null, 2);
+          setQueryText(formatted);
+          setValidationError(null);
+        } catch {
+          setValidationError("Cannot format: invalid JSON.");
+        }
+      },
+    },
+    {
+      key: "f", shift: true, alt: true,
+      description: "Format JSON",
+      skipInEditor: false,
+      handler: () => {
+        try {
+          const formatted = JSON.stringify(JSON.parse(queryText), null, 2);
+          setQueryText(formatted);
+          setValidationError(null);
+        } catch {
+          setValidationError("Cannot format: invalid JSON.");
+        }
+      },
+    },
+  ]);
+
   // Load indexes
   const loadIndexes = useCallback(async () => {
     setIndexLoading(true);
@@ -489,54 +535,111 @@ function ConnectedQueryConsole({ connectionID }: { connectionID: string }) {
       {/* Toolbar */}
       <div className="query-toolbar">
         <div className="query-index-row">
-          <input
-            className="form-input query-index-input"
-            list="query-index-list"
-            value={indexUID}
-            onChange={(e) => setIndexUID(e.target.value)}
-            placeholder={indexLoading ? "Loading indexes…" : "Index UID…"}
-            disabled={executing}
-          />
-          <datalist id="query-index-list">
-            {indexOptions.map((i) => <option key={i.uid} value={i.uid} />)}
-          </datalist>
+          {editorMode === "json" && (
+            <>
+              <input
+                className="form-input query-index-input"
+                list="query-index-list"
+                value={indexUID}
+                onChange={(e) => setIndexUID(e.target.value)}
+                placeholder={indexLoading ? "Loading indexes…" : "Index UID…"}
+                disabled={executing}
+              />
+              <datalist id="query-index-list">
+                {indexOptions.map((i) => <option key={i.uid} value={i.uid} />)}
+              </datalist>
+            </>
+          )}
+          <div className="query-mode-toggle">
+            <button
+              className={`btn btn--sm${editorMode === "json" ? " btn--primary" : " btn--ghost"}`}
+              onClick={() => setEditorMode("json")}
+              title="JSON editor mode"
+            >JSON</button>
+            <button
+              className={`btn btn--sm${editorMode === "builder" ? " btn--primary" : " btn--ghost"}`}
+              onClick={() => setEditorMode("builder")}
+              title="Visual query builder"
+            >Builder</button>
+          </div>
         </div>
         <div className="query-toolbar-actions">
-          <button
-            className="btn btn--primary btn--sm"
-            onClick={() => void handleExecute()}
-            disabled={executing || !indexUID.trim()}
-          >
-            {executing ? "Running…" : "▶ Execute"}
-          </button>
-          {executing && (
-            <button className="btn btn--ghost btn--sm" onClick={handleCancel}>
-              ✕ Cancel
-            </button>
+          {editorMode === "json" && (
+            <>
+              <button
+                className="btn btn--primary btn--sm"
+                onClick={() => void handleExecute()}
+                disabled={executing || !indexUID.trim()}
+              >
+                {executing ? "Running…" : "▶ Execute"}
+              </button>
+              {executing && (
+                <button className="btn btn--ghost btn--sm" onClick={handleCancel}>
+                  ✕ Cancel
+                </button>
+              )}
+              <button className="btn btn--ghost btn--sm" onClick={handleFormat} disabled={executing}>
+                {"{ }"} Format
+              </button>
+              <button className="btn btn--ghost btn--sm" onClick={handleClear} disabled={executing}>
+                Clear
+              </button>
+              <button className="btn btn--ghost btn--sm" onClick={handleReset} disabled={executing}>
+                Reset
+              </button>
+            </>
           )}
-          <button className="btn btn--ghost btn--sm" onClick={handleFormat} disabled={executing}>
-            {"{ }"} Format
-          </button>
-          <button className="btn btn--ghost btn--sm" onClick={handleClear} disabled={executing}>
-            Clear
-          </button>
-          <button className="btn btn--ghost btn--sm" onClick={handleReset} disabled={executing}>
-            Reset
+          <button
+            className={`btn btn--sm${showSavedQueries ? " btn--primary" : " btn--ghost"}`}
+            onClick={() => setShowSavedQueries((v) => !v)}
+            title="Saved queries"
+          >
+            ★ Saved
           </button>
         </div>
       </div>
+
+      {/* Saved Queries Panel */}
+      {showSavedQueries && (
+        <SavedQueriesPanel
+          currentQueryText={queryText}
+          currentIndexUID={indexUID}
+          connectionId={connectionID}
+          onLoad={(q: SavedQuery) => {
+            setIndexUID(q.indexUid);
+            setQueryText(q.queryJson);
+            setValidationError(null);
+            setShowSavedQueries(false);
+          }}
+          onClose={() => setShowSavedQueries(false)}
+        />
+      )}
 
       {/* Main split */}
       <div className="query-main">
         {/* Editor panel */}
         <div className="query-editor-panel">
-          <JsonEditor
-            value={queryText}
-            onChange={(v) => { setQueryText(v); setValidationError(null); }}
-            onExecute={() => void handleExecute()}
-          />
-          {validationError && (
-            <div className="query-validation-error">{validationError}</div>
+          {editorMode === "json" ? (
+            <>
+              <JsonEditor
+                value={queryText}
+                onChange={(v) => { setQueryText(v); setValidationError(null); }}
+                onExecute={() => void handleExecute()}
+              />
+              {validationError && (
+                <div className="query-validation-error">{validationError}</div>
+              )}
+            </>
+          ) : (
+            <SearchBuilder
+              queryText={queryText}
+              onQueryChange={(v) => { setQueryText(v); setValidationError(null); }}
+              indexUID={indexUID}
+              onIndexChange={setIndexUID}
+              indexOptions={indexOptions}
+              onExecute={() => void handleExecute()}
+              executing={executing}
+            />
           )}
         </div>
 
@@ -563,11 +666,25 @@ function ConnectedQueryConsole({ connectionID }: { connectionID: string }) {
                     onClick={() => setResultView("json")}
                   >JSON</button>
                 </div>
-                {resultView === "table" && discoveredCols.length > 0 && (
-                  <button className="btn btn--ghost btn--sm" onClick={() => setShowColManager((v) => !v)}>
-                    Columns
+                <div className="query-tabs-actions">
+                  {resultView === "table" && discoveredCols.length > 0 && (
+                    <button className="btn btn--ghost btn--sm" onClick={() => setShowColManager((v) => !v)}>
+                      Columns
+                    </button>
+                  )}
+                  <button
+                    className="btn btn--ghost btn--sm"
+                    onClick={() => setExportSource({
+                      kind: "search",
+                      indexUID,
+                      searchResponseJSON: lastResult!.rawJson,
+                      hitCount: lastResult!.hits?.length ?? 0,
+                    })}
+                    title="Export results"
+                  >
+                    ↓ Export
                   </button>
-                )}
+                </div>
               </div>
 
               {resultView === "table" && (
@@ -650,6 +767,15 @@ function ConnectedQueryConsole({ connectionID }: { connectionID: string }) {
           />
         )}
       </div>
+
+      {/* Export dialog */}
+      {exportSource && (
+        <ExportDialog
+          source={exportSource}
+          connectionName={connectionID}
+          onClose={() => setExportSource(null)}
+        />
+      )}
     </div>
   );
 }

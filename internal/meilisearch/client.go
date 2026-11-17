@@ -63,12 +63,30 @@ func New(cfg Config) (*Client, error) {
 		maxBody = defaultMaxBodyBytes
 	}
 
+	// Use a dedicated transport (not shared DefaultTransport) to avoid global
+	// state mutation. Clone preserves all TLS and proxy settings.
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+
 	return &Client{
 		baseURL: u,
 		apiKey:  cfg.APIKey,
 		httpClient: &http.Client{
 			Timeout:   timeout,
-			Transport: http.DefaultTransport,
+			Transport: transport,
+			// Strip the Authorization header when following cross-origin redirects
+			// to prevent credential leakage (Fetch-spec-equivalent policy).
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				if len(via) >= 10 {
+					return fmt.Errorf("meilisearch: stopped after 10 redirects")
+				}
+				if len(via) > 0 {
+					orig := via[0].URL
+					if req.URL.Host != orig.Host || req.URL.Scheme != orig.Scheme {
+						req.Header.Del("Authorization")
+					}
+				}
+				return nil
+			},
 		},
 		maxBodyBytes: maxBody,
 	}, nil

@@ -4,28 +4,110 @@ on:
   push:
     tags:
       - 'v[0-9]+.[0-9]+.[0-9]+'
+      - 'v[0-9]+.[0-9]+.[0-9]+-*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (e.g. v1.0.0)'
+        required: true
+        type: string
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  release:
-    name: Build and publish Windows x64 release
-    runs-on: windows-latest
+  validate-version:
+    name: Validate release version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+      prerelease: ${{ steps.ver.outputs.prerelease }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: Determine version
+        id: ver
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            version="${{ inputs.tag }}"
+          else
+            version="${GITHUB_REF#refs/tags/}"
+          fi
+          if [[ ! "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9._-]+)?$ ]]; then
+            echo "Invalid version format: $version"
+            exit 1
+          fi
+          prerelease=false
+          if [[ "$version" == *-* ]]; then
+            prerelease=true
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$prerelease" >> "$GITHUB_OUTPUT"
+          echo "Release version: $version (prerelease: $prerelease)"
 
-      - name: Setup Go
-        uses: actions/setup-go@v5
+  go-checks:
+    name: Go checks and tests
+    needs: validate-version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
           cache: true
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - name: gofmt
+        shell: bash
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "Files not formatted:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: Go tests
+        run: go test ./internal/...
+
+  frontend-tests:
+    name: Frontend tests
+    needs: validate-version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
         with:
-          node-version-file: frontend/.nvmrc
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Run frontend tests
+        working-directory: frontend
+        run: npm test
+
+  build-windows:
+    name: Windows x64 build
+    needs: [go-checks, frontend-tests]
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
@@ -39,42 +121,229 @@ jobs:
       - name: Build release executable
         run: wails3 build
 
-      - name: Determine release version
-        id: version
-        shell: bash
-        run: echo "version=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+      - name: Upload Windows binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: binary-windows-amd64
+          path: bin/meiliscope.exe
+          if-no-files-found: error
+          retention-days: 1
 
-      - name: Create ZIP package
-        shell: pwsh
+  build-linux:
+    name: Linux amd64 build
+    needs: [go-checks, frontend-tests]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install system dependencies
         run: |
-          $version = "${{ steps.version.outputs.version }}"
-          $zipName = "MeiliScope_${version}_windows_amd64.zip"
-          Compress-Archive -Path bin/meiliscope.exe, LICENSE, README.md -DestinationPath $zipName
-          $hash = (Get-FileHash $zipName -Algorithm SHA256).Hash.ToLower()
-          "$hash  $zipName" | Out-File -FilePath "${zipName}.sha256" -Encoding utf8NoBOM -NoNewline
-          Write-Output "zip=$zipName" >> $Env:GITHUB_OUTPUT
-          Write-Output "sha256=${zipName}.sha256" >> $Env:GITHUB_OUTPUT
-        id: package
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            libgtk-3-dev \
+            libwebkit2gtk-4.0-dev \
+            pkg-config \
+            libglib2.0-dev
 
-      - name: Verify ZIP contents
-        shell: pwsh
+      - name: Install Wails CLI
+        run: go install github.com/wailsapp/wails/v3/cmd/wails3@v3.1.0
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build release executable
+        run: wails3 build
+
+      - name: Verify execute permission
+        run: test -x bin/meiliscope
+
+      - name: Upload Linux binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: binary-linux-amd64
+          path: bin/meiliscope
+          if-no-files-found: error
+          retention-days: 1
+
+  package:
+    name: Package and checksum
+    needs: [build-windows, build-linux, validate-version]
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.validate-version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download Windows binary
+        uses: actions/download-artifact@v4
+        with:
+          name: binary-windows-amd64
+          path: dist/windows
+
+      - name: Download Linux binary
+        uses: actions/download-artifact@v4
+        with:
+          name: binary-linux-amd64
+          path: dist/linux
+
+      - name: Restore Linux execute permission
+        run: chmod +x dist/linux/meiliscope
+
+      - name: Create Windows ZIP
         run: |
-          $expected = @("meiliscope.exe", "LICENSE", "README.md")
-          $zip = [System.IO.Compression.ZipFile]::OpenRead("${{ steps.package.outputs.zip }}")
-          $entries = $zip.Entries | Select-Object -ExpandProperty Name
-          $zip.Dispose()
-          foreach ($f in $expected) {
-            if ($entries -notcontains $f) { Write-Error "Missing $f in ZIP"; exit 1 }
-          }
-          Write-Host "ZIP contents verified: $($entries -join ', ')"
+          mkdir -p staging/windows
+          cp dist/windows/meiliscope.exe staging/windows/
+          cp LICENSE staging/windows/
+          cp README.md staging/windows/
+          WIN_ZIP="MeiliScope_${VERSION}_windows_amd64.zip"
+          cd staging/windows
+          zip -j "../../${WIN_ZIP}" meiliscope.exe LICENSE README.md
+          cd ../..
+          echo "WIN_ZIP=${WIN_ZIP}" >> "$GITHUB_ENV"
 
-      - name: Create GitHub Release
+      - name: Verify Windows ZIP contents
+        run: |
+          required=(meiliscope.exe LICENSE README.md)
+          for f in "${required[@]}"; do
+            if ! unzip -l "${WIN_ZIP}" | grep -q "$f"; then
+              echo "Missing from ZIP: $f"
+              exit 1
+            fi
+          done
+          echo "Windows ZIP contents verified"
+          unzip -l "${WIN_ZIP}"
+
+      - name: Create Linux tar.gz
+        run: |
+          mkdir -p staging/linux
+          cp dist/linux/meiliscope staging/linux/
+          cp LICENSE staging/linux/
+          cp README.md staging/linux/
+          LINUX_TGZ="MeiliScope_${VERSION}_linux_amd64.tar.gz"
+          tar -czf "${LINUX_TGZ}" -C staging/linux meiliscope LICENSE README.md
+          echo "LINUX_TGZ=${LINUX_TGZ}" >> "$GITHUB_ENV"
+
+      - name: Verify Linux tar.gz contents
+        run: |
+          required=(meiliscope LICENSE README.md)
+          for f in "${required[@]}"; do
+            if ! tar -tzf "${LINUX_TGZ}" | grep -q "$f"; then
+              echo "Missing from tar.gz: $f"
+              exit 1
+            fi
+          done
+          echo "Linux tar.gz contents verified"
+          tar -tvf "${LINUX_TGZ}"
+
+      - name: Verify Linux binary is executable in archive
+        run: |
+          perms=$(tar -tvf "${LINUX_TGZ}" | grep meiliscope | awk '{print $1}')
+          echo "Linux binary permissions: $perms"
+          if [[ ! "$perms" =~ x ]]; then
+            echo "Linux binary is not executable in archive"
+            exit 1
+          fi
+
+      - name: Generate SHA256SUMS.txt
+        run: |
+          sha256sum "${WIN_ZIP}" "${LINUX_TGZ}" > SHA256SUMS.txt
+          echo "SHA256SUMS.txt:"
+          cat SHA256SUMS.txt
+
+      - name: Upload release packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-packages
+          path: |
+            ${{ env.WIN_ZIP }}
+            ${{ env.LINUX_TGZ }}
+            SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Create draft GitHub Release
+    needs: [package, validate-version]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.validate-version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download release packages
+        uses: actions/download-artifact@v4
+        with:
+          name: release-packages
+          path: packages
+
+      - name: Verify checksums before publish
+        run: |
+          cd packages
+          sha256sum --check SHA256SUMS.txt
+          echo "All checksums verified"
+
+      - name: Create draft release
         uses: softprops/action-gh-release@v2
         with:
-          name: MeiliScope ${{ steps.version.outputs.version }}
-          draft: false
-          prerelease: ${{ contains(steps.version.outputs.version, '-') }}
+          tag_name: ${{ env.VERSION }}
+          name: MeiliScope ${{ env.VERSION }}
+          draft: true
+          prerelease: ${{ needs.validate-version.outputs.prerelease }}
           files: |
-            ${{ steps.package.outputs.zip }}
-            ${{ steps.package.outputs.sha256 }}
-          generate_release_notes: true
+            packages/MeiliScope_${{ env.VERSION }}_windows_amd64.zip
+            packages/MeiliScope_${{ env.VERSION }}_linux_amd64.tar.gz
+            packages/SHA256SUMS.txt
+          body: |
+            ## MeiliScope ${{ env.VERSION }}
+
+            Desktop browser for Meilisearch — Windows x64 and Linux x64.
+
+            ### Download
+
+            | Platform | Archive |
+            |---|---|
+            | Windows x64 | `MeiliScope_${{ env.VERSION }}_windows_amd64.zip` |
+            | Linux x64 | `MeiliScope_${{ env.VERSION }}_linux_amd64.tar.gz` |
+
+            Verify downloads with `SHA256SUMS.txt`.
+
+            ### Runtime Prerequisites
+
+            **Windows:** Windows 10 version 1803 or later / Windows 11. WebView2 is pre-installed on supported Windows versions.
+
+            **Linux (Ubuntu 22.04+):**
+            ```bash
+            sudo apt-get install libgtk-3-0 libwebkit2gtk-4.0-37
+            ```
+
+            ### Installation
+
+            **Windows:** Extract the ZIP and run `meiliscope.exe`. No installer required.
+
+            **Linux:** Extract the tar.gz, `chmod +x meiliscope`, and run `./meiliscope`.
+
+            See [Installation Guide](https://github.com/taqu/meiliscope/blob/main/docs/en/getting-started/installation.md) for full details.
+
+            ### What's New
+
+            See [CHANGELOG.md](https://github.com/taqu/meiliscope/blob/main/CHANGELOG.md) for the full change list.
+
+            ---
+
+            > **Note:** This release has not been code-signed. Windows may show a SmartScreen warning on first launch. Click **More info → Run anyway**.
+            >
+            > MeiliScope is a read/browse tool for Meilisearch data. It is not a Meilisearch server administration console.
