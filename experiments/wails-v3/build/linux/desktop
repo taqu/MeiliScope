@@ -1,0 +1,13 @@
+[Desktop Entry]
+Version=1.0
+Name=MeiliScope PoC
+Comment=Wails v3 feasibility PoC
+# The Exec line includes %u to pass the URL to the application
+Exec=/usr/local/bin/wails-v3.exe %u
+Terminal=false
+Type=Application
+Icon=wails-v3.exe
+Categories=Utility;
+StartupWMClass=wails-v3.exe
+
+ 

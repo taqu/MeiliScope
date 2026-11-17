@@ -1,0 +1,13 @@
+[Desktop Entry]
+Version=1.0
+Name=MeiliScope
+Comment=Desktop browser for Meilisearch
+# The Exec line includes %u to pass the URL to the application
+Exec=/usr/local/bin/meiliscope.exe %u
+Terminal=false
+Type=Application
+Icon=meiliscope.exe
+Categories=Utility;
+StartupWMClass=meiliscope.exe
+
+ 
